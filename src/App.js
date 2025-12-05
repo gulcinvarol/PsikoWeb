@@ -24,26 +24,70 @@ const waitForFaceApi = async () => {
 // ChatBot
 const ChatBot = () => {
     const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState([{ id: 1, text: "Merhaba! 💬 Ben PsikoWeb Copilot.", sender: 'bot' }]);
+    const [messages, setMessages] = useState([{ id: 1, text: "Merhaba! 💬 Ben PsikoWeb Copilot. Ruh sağlığı ve psikoloji hakkında sorularınıza yanıt vermek için buradayım.", sender: 'bot' }]);
     const [inputValue, setInputValue] = useState('');
+    const [loading, setLoading] = useState(false);
     const messagesEndRef = useRef(null);
 
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-    const getBotResponse = (text) => {
-        const lower = text.toLowerCase();
-        if (lower.includes('depres')) return "Depresyon önemli bir konudur. Profesyonel yardım alabilirsiniz.";
-        if (lower.includes('anksiyete') || lower.includes('kaygi')) return "Anksiyete yönetimi için meditasyon ve terapiler etkilidir.";
-        return "Anladım. Daha fazla bilgi için sayfamıza bakabilirsiniz.";
+    const getBotResponse = async (text) => {
+        const apiKey = process.env.REACT_APP_OPENROUTER_API_KEY;
+        
+        if (!apiKey) {
+            return "Üzgünüm, API anahtarı yapılandırılmamış. Lütfen yöneticiye başvurun.";
+        }
+
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': window.location.href,
+                    'X-Title': 'PsikoWeb'
+                },
+                body: JSON.stringify({
+                    model: 'google/gemma-3-27b-it:free',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'Sen PsikoWeb Copilot\'sun. Ruh sağlığı, psikoloji, depresyon, anksiyete, ilişkiler, stres yönetimi gibi konularda yardımcı bir danışmansın. Türkçe cevap ver. Kısa ve anlaşılır cevaplar ver (2-3 cümle). Profesyonel tavsiye ver ama her zaman profesyonel yardım almalarını öner.'
+                        },
+                        {
+                            role: 'user',
+                            content: text
+                        }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 150
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('API Error:', error);
+                return "Üzgünüm, bir hata oluştu. Lütfen daha sonra tekrar deneyin.";
+            }
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+        } catch (error) {
+            console.error('Error calling OpenRouter API:', error);
+            return "Üzgünüm, bağlantı hatası oluştu. Lütfen internet bağlantınızı kontrol edin.";
+        }
     };
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (inputValue.trim()) {
-            setMessages([...messages, { id: messages.length + 1, text: inputValue, sender: 'user' }]);
+            const userMessage = inputValue;
+            setMessages([...messages, { id: messages.length + 1, text: userMessage, sender: 'user' }]);
             setInputValue('');
-            setTimeout(() => {
-                setMessages(prev => [...prev, { id: prev.length + 1, text: getBotResponse(inputValue), sender: 'bot' }]);
-            }, 500);
+            setLoading(true);
+
+            const botResponse = await getBotResponse(userMessage);
+            setMessages(prev => [...prev, { id: prev.length + 1, text: botResponse, sender: 'bot' }]);
+            setLoading(false);
         }
     };
 
@@ -63,11 +107,18 @@ const ChatBot = () => {
                                 </div>
                             </div>
                         ))}
+                        {loading && (
+                            <div className="mb-3 flex justify-start">
+                                <div className="px-4 py-2 rounded-lg text-sm bg-white text-gray-800 border">
+                                    ⏳ Yazılıyor...
+                                </div>
+                            </div>
+                        )}
                         <div ref={messagesEndRef} />
                     </div>
                     <div className="p-3 bg-gray-100 flex gap-2">
-                        <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} placeholder="Mesaj..." className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <button onClick={handleSend} className="bg-blue-500 text-white px-4 py-2 rounded-lg">Gönder</button>
+                        <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && !loading && handleSend()} placeholder="Mesaj..." className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={loading} />
+                        <button onClick={handleSend} disabled={loading} className="bg-blue-500 text-white px-4 py-2 rounded-lg disabled:opacity-50">Gönder</button>
                     </div>
                 </div>
             )}
